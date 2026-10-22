@@ -5,7 +5,7 @@ metadata:
   namespace: argocd
 spec:
   sourceRepos:
-    - http://gitea:3000/lab/habitapp-gitops.git
+    - https://github.com/praveenpreni/habitapp-gitops-20261022.git
   destinations:
     - namespace: habitapp
       server: https://kubernetes.default.svc

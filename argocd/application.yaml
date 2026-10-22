@@ -6,7 +6,7 @@ metadata:
 spec:
   project: habitapp
   source:
-    repoURL: http://gitea:3000/lab/habitapp-gitops.git
+    repoURL: https://github.com/praveenpreni/habitapp-gitops-20261022.git
     targetRevision: main
     path: charts/habitapp
     helm:

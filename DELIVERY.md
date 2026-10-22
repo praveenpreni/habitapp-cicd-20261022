@@ -4,15 +4,17 @@ The application now has real tests, dedicated health endpoints, container packag
 
 ## Verified in this workspace on 22 October 2026
 
-- Java 21 Maven clean verify passed: 15 tests, zero failures, errors or skips.
+- Jenkins build 3 passed on Java 21 with 16 tests, zero failures, errors or skips.
 - Executable habit-tracker.jar was packaged successfully.
 - Direct JVM execution returned HTTP 200 for the dashboard, API, liveness and readiness.
 - Helm lint passed and local and ingress-enabled configurations rendered successfully.
-- Docker Compose configuration validated without starting containers.
-- Jenkinsfile passed Groovy syntax compilation. Jenkins runtime execution is still required.
-- Both PowerShell setup scripts passed syntax parsing. Their Docker-dependent execution is still required.
+- Jenkins built and smoke-tested the container, pushed a source-SHA image to the authenticated registry, and committed the deployment change to Git.
+- SonarQube passed a gate enforcing at least 80 percent coverage, zero bugs and zero vulnerabilities. Final SonarQube coverage is 91.4 percent.
+- Argo CD synchronized the Helm deployment; two replicas are ready and the container runs as UID 10001.
+- CPU/memory, restart counts, pod status, application logs, Secrets metadata and Argo CD health are captured under evidence.
+- Git-based rollback restored the baseline image; the security-fixed image was then restored as the final state.
 
-Docker Desktop 4.96.2 now starts successfully and the user has verified its Linux engine in Windows PowerShell. Codex commands still receive a named-pipe permission error. No Docker image build, Jenkins pipeline run, SonarQube result, registry publication, Kubernetes deployment, or Argo CD synchronization has been claimed as completed.
+Docker Desktop 4.96.2 and the local Kubernetes lab are running. The application is accessible locally at http://127.0.0.1:28080 and through a temporary public HTTPS demonstration URL recorded in the evidence package. The tunnel URL depends on this laptop and the tunnel process remaining running. GitHub publication is a separate authenticated handover step; consult the final report for its confirmed status.
 
 ## Local application
 
