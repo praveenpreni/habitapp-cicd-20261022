@@ -32,7 +32,10 @@ pipeline {
     }
     stage('SonarQube Analysis') {
       steps {
-        withSonarQubeEnv('sonarqube') { sh 'mvn -B -ntp sonar:sonar' }
+        // Poll the gate so private-network webhook restrictions cannot stall CI.
+        withSonarQubeEnv('sonarqube') {
+          sh 'mvn -B -ntp sonar:sonar -Dsonar.qualitygate.wait=true -Dsonar.qualitygate.timeout=300'
+        }
       }
     }
     stage('Quality Gate') {
