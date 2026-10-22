@@ -15,7 +15,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/habits")
-@CrossOrigin(origins = "*")
 public class HabitController {
 
     private final HabitService service;

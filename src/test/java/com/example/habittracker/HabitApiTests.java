@@ -49,4 +49,8 @@ class HabitApiTests {
     @Test void dashboardIsServed() throws Exception {
         mvc.perform(get("/")).andExpect(status().isOk());
     }
+    @Test void untrustedOriginDoesNotReceiveCorsAccess() throws Exception {
+        mvc.perform(get("/api/habits").header("Origin", "https://untrusted.example"))
+            .andExpect(header().doesNotExist("Access-Control-Allow-Origin"));
+    }
 }

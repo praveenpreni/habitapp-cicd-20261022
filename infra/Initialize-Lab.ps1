@@ -190,7 +190,9 @@ kubectl apply -f (Join-Path $projectRoot 'argocd/application.yaml')
 $jenkinsHeaders=Basic-Header 'admin' $state.AdminPassword
 $crumb=Invoke-RestMethod 'http://127.0.0.1:8081/crumbIssuer/api/json' -Headers $jenkinsHeaders -SessionVariable jenkinsSession
 $jenkinsHeaders[$crumb.crumbRequestField]=$crumb.crumb
-Invoke-WebRequest 'http://127.0.0.1:8081/job/habitapp/build' -Method Post -Headers $jenkinsHeaders -WebSession $jenkinsSession | Out-Null
+$job=Invoke-RestMethod 'http://127.0.0.1:8081/job/habitapp/api/json?tree=property[parameterDefinitions[name]]' -Headers $jenkinsHeaders -WebSession $jenkinsSession -NoProxy
+$buildEndpoint=if ($job.property.parameterDefinitions) { 'buildWithParameters' } else { 'build' }
+Invoke-WebRequest "http://127.0.0.1:8081/job/habitapp/$buildEndpoint" -Method Post -Headers $jenkinsHeaders -WebSession $jenkinsSession -NoProxy | Out-Null
 Write-Host 'Jenkins build triggered. Watch http://127.0.0.1:8081/job/habitapp/'
 Write-Host 'Application becomes available at http://127.0.0.1:28080 after a successful build and Argo CD synchronization.'
 Write-Host 'Local credentials are stored in .local/state.json. Do not publish that file.'
