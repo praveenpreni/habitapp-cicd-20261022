@@ -11,11 +11,14 @@ $envFile = Join-Path $localRoot 'lab.env'
 $stateFile = Join-Path $localRoot 'state.json'
 $env:KUBECONFIG = Join-Path $localRoot 'kubeconfig'
 
-function New-Password { [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24)) }
-function Wait-Url([string]$Url, [int]$Minutes = 10) {
+function New-Password {
+    # Include every required character class as well as 192 random bits.
+    'aA9!' + [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(24))
+}
+function Wait-Url([string]$Url, [int]$Minutes = 10, [hashtable]$Headers = @{}) {
     $deadline = (Get-Date).AddMinutes($Minutes)
     do {
-        try { Invoke-WebRequest $Url -TimeoutSec 10 | Out-Null; return } catch { Start-Sleep 5 }
+        try { Invoke-WebRequest $Url -TimeoutSec 10 -Headers $Headers -NoProxy | Out-Null; return } catch { Start-Sleep 5 }
     } while ((Get-Date) -lt $deadline)
     throw "Service did not become ready: $Url"
 }
@@ -25,7 +28,8 @@ function Basic-Header([string]$UserName, [string]$Password) {
 function Save-State {
     $state | ConvertTo-Json | Set-Content $stateFile
     @("LAB_ADMIN_PASSWORD=$($state.AdminPassword)", "LAB_GIT_PASSWORD=$($state.GitPassword)",
-      "SONAR_TOKEN=$($state.SonarToken)") | Set-Content $envFile
+      "SONAR_TOKEN=$($state.SonarToken)", "REGISTRY_USER=$($state.RegistryUser)",
+      "REGISTRY_PASSWORD=$($state.RegistryPassword)") | Set-Content $envFile
 }
 function Invoke-LabCompose {
     & docker compose --env-file $envFile -f $compose @args
@@ -35,42 +39,67 @@ docker info --format '{{.ServerVersion}}'
 if (Test-Path $stateFile) {
     $state = Get-Content $stateFile -Raw | ConvertFrom-Json
 } else {
-    $state = [pscustomobject]@{AdminPassword=(New-Password); GitPassword=(New-Password); SonarToken='pending'}
+    $state = [pscustomobject]@{AdminPassword=(New-Password); GitPassword=(New-Password); SonarToken='pending'; RegistryUser='habitapp-ci'; RegistryPassword=(New-Password)}
     Save-State
+}
+if (-not $state.RegistryPassword) {
+    $state | Add-Member -NotePropertyName RegistryUser -NotePropertyValue 'habitapp-ci' -Force
+    $state | Add-Member -NotePropertyName RegistryPassword -NotePropertyValue (New-Password) -Force
+    Save-State
+}
+$authDirectory=Join-Path $localRoot 'registry-auth'
+New-Item -ItemType Directory -Force $authDirectory | Out-Null
+if (-not (Test-Path (Join-Path $authDirectory 'htpasswd'))) {
+    # Only the generated bcrypt hash is written to the registry auth mount.
+    docker run --rm -e "REGISTRY_USER=$($state.RegistryUser)" -e "REGISTRY_PASSWORD=$($state.RegistryPassword)" httpd:2.4-alpine sh -c 'htpasswd -Bbn "$REGISTRY_USER" "$REGISTRY_PASSWORD"' | Set-Content (Join-Path $authDirectory 'htpasswd')
 }
 Write-Host 'Starting local Git, registry and SonarQube services'
 Invoke-LabCompose up -d gitea registry sonarqube
-Wait-Url 'http://localhost:3000/api/healthz'
-Wait-Url 'http://localhost:5000/v2/'
+Wait-Url 'http://127.0.0.1:13000/api/healthz'
+Wait-Url 'http://127.0.0.1:5000/v2/' -Headers (Basic-Header $state.RegistryUser $state.RegistryPassword)
 $sonarDeadline = (Get-Date).AddMinutes(15)
 do {
-    try { $status = Invoke-RestMethod 'http://localhost:9000/api/system/status' } catch { $status=$null }
+    try { $status = Invoke-RestMethod 'http://127.0.0.1:9000/api/system/status' } catch { $status=$null }
     if ($status.status -eq 'UP') { break }
     Start-Sleep 5
 } while ((Get-Date) -lt $sonarDeadline)
 if ($status.status -ne 'UP') { throw 'SonarQube did not start. Check docker compose logs sonarqube.' }
 
 $gitHeaders = Basic-Header 'lab' $state.GitPassword
-try { Invoke-RestMethod 'http://localhost:3000/api/v1/user' -Headers $gitHeaders | Out-Null }
+try { Invoke-RestMethod 'http://127.0.0.1:13000/api/v1/user' -Headers $gitHeaders | Out-Null }
 catch {
     & docker compose --env-file $envFile -f $compose exec -T -u git -e "USER_PASSWORD=$($state.GitPassword)" gitea sh -c 'gitea admin user create --username lab --password "$USER_PASSWORD" --email lab@habitapp.local --admin --must-change-password=false' | Out-Null
 }
 foreach ($repo in @('habitapp','habitapp-gitops')) {
-    try { Invoke-RestMethod "http://localhost:3000/api/v1/repos/lab/$repo" -Headers $gitHeaders | Out-Null }
-    catch { Invoke-RestMethod 'http://localhost:3000/api/v1/user/repos' -Method Post -Headers $gitHeaders -ContentType application/json -Body (@{name=$repo;private=$false;default_branch='main'} | ConvertTo-Json) | Out-Null }
+    try { Invoke-RestMethod "http://127.0.0.1:13000/api/v1/repos/lab/$repo" -Headers $gitHeaders | Out-Null }
+    catch { Invoke-RestMethod 'http://127.0.0.1:13000/api/v1/user/repos' -Method Post -Headers $gitHeaders -ContentType application/json -Body (@{name=$repo;private=$false;default_branch='main'} | ConvertTo-Json) | Out-Null }
 }
 if ($state.SonarToken -eq 'pending') {
-    $defaultSonarHeaders=Basic-Header 'admin' 'admin'
-    Invoke-RestMethod 'http://localhost:9000/api/users/change_password' -Method Post -Headers $defaultSonarHeaders -Body @{login='admin';previousPassword='admin';password=$state.AdminPassword} | Out-Null
+    # The earlier generator produced uppercase hex only; it was rejected before
+    # changing SonarQube. Repair that pending state without rotating Git/registry credentials.
+    if ($state.AdminPassword -cnotmatch '[a-z]') {
+        $state.AdminPassword=New-Password
+        Save-State
+    }
     $sonarHeaders=Basic-Header 'admin' $state.AdminPassword
-    $token=Invoke-RestMethod 'http://localhost:9000/api/user_tokens/generate' -Method Post -Headers $sonarHeaders -Body @{name='habitapp-jenkins'}
+    $valid=Invoke-RestMethod 'http://127.0.0.1:9000/api/authentication/validate' -Headers $sonarHeaders -NoProxy
+    if (-not $valid.valid) {
+        $defaultSonarHeaders=Basic-Header 'admin' 'admin'
+        Invoke-RestMethod 'http://127.0.0.1:9000/api/users/change_password' -Method Post -Headers $defaultSonarHeaders -Body @{login='admin';previousPassword='admin';password=$state.AdminPassword} -NoProxy | Out-Null
+    }
+    # Recover if token creation succeeded but saving local state was interrupted.
+    $tokens=Invoke-RestMethod 'http://127.0.0.1:9000/api/user_tokens/search' -Headers $sonarHeaders -NoProxy
+    if ($tokens.userTokens | Where-Object name -eq 'habitapp-jenkins') {
+        Invoke-RestMethod 'http://127.0.0.1:9000/api/user_tokens/revoke' -Method Post -Headers $sonarHeaders -Body @{name='habitapp-jenkins'} -NoProxy | Out-Null
+    }
+    $token=Invoke-RestMethod 'http://127.0.0.1:9000/api/user_tokens/generate' -Method Post -Headers $sonarHeaders -Body @{name='habitapp-jenkins'}
     $state.SonarToken=$token.token
     Save-State
 }
 $sonarHeaders=Basic-Header 'admin' $state.AdminPassword
-$hooks=Invoke-RestMethod 'http://localhost:9000/api/webhooks/list' -Headers $sonarHeaders
+$hooks=Invoke-RestMethod 'http://127.0.0.1:9000/api/webhooks/list' -Headers $sonarHeaders
 if (-not ($hooks.webhooks | Where-Object name -eq 'Jenkins')) {
-    Invoke-RestMethod 'http://localhost:9000/api/webhooks/create' -Method Post -Headers $sonarHeaders -Body @{name='Jenkins';url='http://jenkins:8080/sonarqube-webhook/'} | Out-Null
+    Invoke-RestMethod 'http://127.0.0.1:9000/api/webhooks/create' -Method Post -Headers $sonarHeaders -Body @{name='Jenkins';url='http://jenkins:8080/sonarqube-webhook/'} | Out-Null
 }
 
 Write-Host 'Committing application and deployment configuration to the local Git service'
@@ -79,7 +108,7 @@ if (-not (Test-Path (Join-Path $projectRoot '.git'))) {
 }
 # The Basic header exists only in this process environment, never in remotes or files.
 $env:GIT_CONFIG_COUNT='1'
-$env:GIT_CONFIG_KEY_0='http.http://localhost:3000/.extraheader'
+$env:GIT_CONFIG_KEY_0='http.http://127.0.0.1:13000/.extraheader'
 $env:GIT_CONFIG_VALUE_0=$gitHeaders.Authorization.Replace('Basic ', 'Authorization: Basic ')
 try {
     git -C $projectRoot config user.name 'HabitApp Lab'
@@ -87,10 +116,10 @@ try {
     git -C $projectRoot add .
     $changed=git -C $projectRoot diff --cached --name-only
     if ($changed) { git -C $projectRoot commit -m 'Add CI pipeline container packaging and GitOps deployment' }
-    git -C $projectRoot push http://localhost:3000/lab/habitapp.git HEAD:main
+    git -C $projectRoot push http://127.0.0.1:13000/lab/habitapp.git HEAD:main
     $gitopsRoot=Join-Path $localRoot 'gitops'
     if (-not (Test-Path (Join-Path $gitopsRoot '.git'))) {
-        git clone http://localhost:3000/lab/habitapp-gitops.git $gitopsRoot
+        git clone http://127.0.0.1:13000/lab/habitapp-gitops.git $gitopsRoot
         Copy-Item (Join-Path $projectRoot 'charts') $gitopsRoot -Recurse
         Copy-Item (Join-Path $projectRoot 'environments') $gitopsRoot -Recurse
         git -C $gitopsRoot config user.name 'HabitApp Lab'
@@ -105,7 +134,7 @@ try {
 
 Write-Host 'Starting Jenkins'
 Invoke-LabCompose up -d --build jenkins
-Wait-Url 'http://localhost:8081/login' 20
+Wait-Url 'http://127.0.0.1:8081/login' 20
 
 Write-Host 'Creating the isolated kind Kubernetes cluster'
 $kind=Join-Path $localRoot 'kind.exe'
@@ -126,6 +155,12 @@ foreach ($node in $nodes) {
     '[host."http://habitapp-registry:5000"]' | docker exec -i $node sh -c 'cat > /etc/containerd/certs.d/localhost:5000/hosts.toml'
 }
 kubectl create namespace habitapp --dry-run=client -o yaml | kubectl apply -f -
+$registryAuth=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("$($state.RegistryUser):$($state.RegistryPassword)"))
+$dockerConfigPath=Join-Path $localRoot 'registry-config.json'
+@{auths=@{'localhost:5000'=@{auth=$registryAuth}}} | ConvertTo-Json -Depth 5 | Set-Content $dockerConfigPath
+try {
+    kubectl -n habitapp create secret generic registry-pull --type=kubernetes.io/dockerconfigjson "--from-file=.dockerconfigjson=$dockerConfigPath" --dry-run=client -o yaml | kubectl apply -f - | Out-Null
+} finally { Remove-Item -LiteralPath $dockerConfigPath }
 kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -n argocd --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.12/manifests/install.yaml
 kubectl -n argocd rollout status deployment/argocd-repo-server --timeout=300s
@@ -153,9 +188,9 @@ kubectl apply -f (Join-Path $projectRoot 'argocd/project.yaml')
 kubectl apply -f (Join-Path $projectRoot 'argocd/application.yaml')
 
 $jenkinsHeaders=Basic-Header 'admin' $state.AdminPassword
-$crumb=Invoke-RestMethod 'http://localhost:8081/crumbIssuer/api/json' -Headers $jenkinsHeaders -SessionVariable jenkinsSession
+$crumb=Invoke-RestMethod 'http://127.0.0.1:8081/crumbIssuer/api/json' -Headers $jenkinsHeaders -SessionVariable jenkinsSession
 $jenkinsHeaders[$crumb.crumbRequestField]=$crumb.crumb
-Invoke-WebRequest 'http://localhost:8081/job/habitapp/build' -Method Post -Headers $jenkinsHeaders -WebSession $jenkinsSession | Out-Null
-Write-Host 'Jenkins build triggered. Watch http://localhost:8081/job/habitapp/'
-Write-Host 'Application becomes available at http://localhost:28080 after a successful build and Argo CD synchronization.'
+Invoke-WebRequest 'http://127.0.0.1:8081/job/habitapp/build' -Method Post -Headers $jenkinsHeaders -WebSession $jenkinsSession | Out-Null
+Write-Host 'Jenkins build triggered. Watch http://127.0.0.1:8081/job/habitapp/'
+Write-Host 'Application becomes available at http://127.0.0.1:28080 after a successful build and Argo CD synchronization.'
 Write-Host 'Local credentials are stored in .local/state.json. Do not publish that file.'

@@ -4,3 +4,5 @@ image:
 service:
   type: NodePort
   nodePort: 30080
+imagePullSecrets:
+  - name: registry-pull

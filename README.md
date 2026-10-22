@@ -1,5 +1,13 @@
 # Habit Tracker
 
+## CI and CD submission
+
+See [DELIVERY.md](DELIVERY.md) for the implementation, verified build results, setup commands and pending runtime checks. The repository includes Dockerfiles, a Declarative Jenkinsfile, a Helm chart, Argo CD configuration, monitoring setup and evidence collection scripts.
+
+Build with JDK 21 and Maven 3.9.9. Start the local infrastructure with `infra/Initialize-Lab.ps1` after Docker Desktop is running. Then run `infra/Enable-Monitoring.ps1`, `infra/Collect-Evidence.ps1`, and follow `infra/DEPLOYMENT-DEMONSTRATION.md` for rolling update and rollback evidence. Local credentials stay under the ignored `.local` directory.
+
+This is an in-memory demonstration application. Multiple replicas do not share data. Do not use it for durable production data without a shared database.
+
 A self-contained Spring Boot REST API + dashboard for tracking daily/weekly habits and streaks.
 **No external database** — all data is held in memory (`ConcurrentHashMap`) for the life of the process.
 

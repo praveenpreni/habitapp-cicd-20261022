@@ -17,6 +17,11 @@ credentials:
       - credentials:
           - usernamePassword:
               scope: GLOBAL
+              id: registry-creds
+              username: "${REGISTRY_USER}"
+              password: "${REGISTRY_PASSWORD}"
+          - usernamePassword:
+              scope: GLOBAL
               id: gitops-http
               username: lab
               password: "${LAB_GIT_PASSWORD}"

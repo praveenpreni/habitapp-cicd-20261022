@@ -6,16 +6,20 @@ services:
     environment:
       GITEA__security__INSTALL_LOCK: "true"
       GITEA__service__DISABLE_REGISTRATION: "true"
-      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__server__ROOT_URL: http://localhost:13000/
       GITEA__server__HTTP_PORT: "3000"
-    ports: ["127.0.0.1:3000:3000"]
+    ports: ["127.0.0.1:13000:3000"]
     volumes: [gitea-data:/data]
     networks: [lab]
   registry:
     image: registry:2.8.3
     container_name: habitapp-registry
     ports: ["127.0.0.1:5000:5000"]
-    volumes: [registry-data:/var/lib/registry]
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: HabitApp
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+    volumes: [registry-data:/var/lib/registry, ../.local/registry-auth:/auth:ro]
     networks: [lab]
   sonarqube:
     image: sonarqube:community
@@ -34,6 +38,8 @@ services:
       LAB_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:?Run Initialize-Lab.ps1}
       LAB_GIT_PASSWORD: ${LAB_GIT_PASSWORD:?Run Initialize-Lab.ps1}
       SONAR_TOKEN: ${SONAR_TOKEN:?Configure SonarQube token}
+      REGISTRY_USER: ${REGISTRY_USER:?Run Initialize-Lab.ps1}
+      REGISTRY_PASSWORD: ${REGISTRY_PASSWORD:?Run Initialize-Lab.ps1}
     ports: ["127.0.0.1:8081:8080"]
     volumes: [jenkins-data:/var/jenkins_home, /var/run/docker.sock:/var/run/docker.sock]
     extra_hosts: ["host.docker.internal:host-gateway"]

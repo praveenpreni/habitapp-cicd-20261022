@@ -12,7 +12,7 @@ The application now has real tests, dedicated health endpoints, container packag
 - Jenkinsfile passed Groovy syntax compilation. Jenkins runtime execution is still required.
 - Both PowerShell setup scripts passed syntax parsing. Their Docker-dependent execution is still required.
 
-Docker Desktop cannot currently start on this laptop. Its log reports that a temporary runtime socket cannot be accessed. No Docker image build, Jenkins pipeline run, SonarQube result, registry publication, Kubernetes deployment, or Argo CD synchronization has been claimed as completed.
+Docker Desktop 4.96.2 now starts successfully and the user has verified its Linux engine in Windows PowerShell. Codex commands still receive a named-pipe permission error. No Docker image build, Jenkins pipeline run, SonarQube result, registry publication, Kubernetes deployment, or Argo CD synchronization has been claimed as completed.
 
 ## Local application
 
@@ -39,7 +39,7 @@ Service addresses:
 
 | Service | Local URL |
 | --- | --- |
-| Gitea repositories | http://localhost:3000/lab |
+| Gitea repositories | http://localhost:13000/lab |
 | Jenkins lab | http://localhost:8081 |
 | SonarQube | http://localhost:9000 |
 | Container registry | http://localhost:5000/v2/ |
@@ -53,7 +53,7 @@ The local bootstrap is implementation code awaiting execution against a working 
 
 Publish the source and the separate charts/environments deployment repository to repositories you own. Replace Gitea URLs in the Jenkins job, pipeline parameters and Argo CD project/application. Configure repository access credentials with narrowly scoped permissions, HTTPS, trusted certificates and protected branches. Reconfigure the pipeline environment values file path for each environment when extending beyond the local chart.
 
-Use an authenticated TLS registry and a scoped push credential. Configure registry pull Secrets and imagePullSecrets in Kubernetes. Use immutable tags or digests, approved base-image digests, vulnerability scanning and artifact signing. The local registry has no authentication or TLS and must remain local. Latest lab Jenkins and SonarQube tags need approved version/digest pins for repeatability before a production deployment.
+Use an authenticated TLS registry and a scoped push credential. The local lab now generates registry credentials for Jenkins and a registry-pull Secret for Kubernetes. It still uses local HTTP and must remain isolated. Production requires TLS, immutable tags or digests, approved base-image digests, vulnerability scanning and artifact signing. Latest lab Jenkins and SonarQube tags need approved version/digest pins for repeatability before a production deployment.
 
 Jenkins in this isolated lab runs with Docker socket access and root inside its container so it can build images. This grants control over the Docker daemon. Run trusted source only; production should use isolated disposable build agents with a dedicated image builder. SonarQube bootstrap checks are disabled for the local lab only; production needs supported host limits and an external supported database.
 
@@ -75,7 +75,7 @@ After a successful Jenkins build and healthy Argo CD synchronization:
 ./infra/Collect-Evidence.ps1
 ```
 
-The script saves actual workload configuration, logs, Argo CD state, registry tags, HTTP response and Jenkins console output under evidence. Add screenshots from the live Jenkins and SonarQube interfaces. Verify logs and manifests contain no secrets before sharing. Use kubectl top pods when Metrics Server is installed; it is not installed by the lab bootstrap.
+The script saves workload configuration, CPU and memory, restart counts, events, application logs, Argo CD state, Secret metadata without values, registry tags, HTTP responses, Jenkins console output and SonarQube Quality Gate results under a timestamped evidence directory. First run infra/Enable-Monitoring.ps1 to install Metrics Server in the isolated kind cluster. Add screenshots from the live Jenkins and SonarQube interfaces and review the captured states before reporting success. Follow infra/DEPLOYMENT-DEMONSTRATION.md to collect separate baseline, new-version and rollback evidence.
 
 Argo CD renders this Helm chart and owns its Kubernetes resources. There is no Helm CLI release history for that deployment. For a separate Helm CLI demonstration, deploy to a different namespace and remove that test release afterwards.
 

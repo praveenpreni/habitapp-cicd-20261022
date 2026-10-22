@@ -11,7 +11,7 @@ pipeline {
     string(name: 'PUSH_IMAGE', defaultValue: 'localhost:5000/habitapp', description: 'Docker daemon registry address')
     string(name: 'DEPLOY_IMAGE', defaultValue: 'localhost:5000/habitapp', description: 'Kubernetes registry address')
     string(name: 'GITOPS_URL', defaultValue: 'http://gitea:3000/lab/habitapp-gitops.git', description: 'Deployment repository')
-    string(name: 'REGISTRY_CREDENTIAL_ID', defaultValue: '', description: 'Blank only for the loopback-only lab registry')
+    string(name: 'REGISTRY_CREDENTIAL_ID', defaultValue: 'registry-creds', description: 'Scoped registry push credential')
     string(name: 'SMOKE_NETWORK', defaultValue: 'habitapp-lab', description: 'Network shared with the Jenkins agent')
   }
   stages {
