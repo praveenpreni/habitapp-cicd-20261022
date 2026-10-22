@@ -1,0 +1,6 @@
+image:
+  repository: localhost:5000/habitapp
+  tag: "bootstrap"
+service:
+  type: NodePort
+  nodePort: 30080

@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: habitapp
+  namespace: argocd
+spec:
+  project: habitapp
+  source:
+    repoURL: http://gitea:3000/lab/habitapp-gitops.git
+    targetRevision: main
+    path: charts/habitapp
+    helm:
+      releaseName: habitapp
+      valueFiles: [../../environments/local/values.yaml]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: habitapp
+  syncPolicy:
+    automated: {prune: true, selfHeal: true}
+    retry:
+      limit: 3
+      backoff: {duration: 10s, factor: 2, maxDuration: 1m}

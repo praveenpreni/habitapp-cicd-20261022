@@ -1,0 +1,49 @@
+name: habitapp-lab
+services:
+  gitea:
+    image: gitea/gitea:1.23.8
+    container_name: habitapp-gitea
+    environment:
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__server__ROOT_URL: http://localhost:3000/
+      GITEA__server__HTTP_PORT: "3000"
+    ports: ["127.0.0.1:3000:3000"]
+    volumes: [gitea-data:/data]
+    networks: [lab]
+  registry:
+    image: registry:2.8.3
+    container_name: habitapp-registry
+    ports: ["127.0.0.1:5000:5000"]
+    volumes: [registry-data:/var/lib/registry]
+    networks: [lab]
+  sonarqube:
+    image: sonarqube:community
+    container_name: habitapp-sonarqube
+    ports: ["127.0.0.1:9000:9000"]
+    environment:
+      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: "true"
+    volumes: [sonar-data:/opt/sonarqube/data, sonar-extensions:/opt/sonarqube/extensions]
+    networks: [lab]
+  jenkins:
+    build: ./jenkins
+    container_name: habitapp-jenkins
+    user: "0:0"
+    environment:
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=false
+      LAB_ADMIN_PASSWORD: ${LAB_ADMIN_PASSWORD:?Run Initialize-Lab.ps1}
+      LAB_GIT_PASSWORD: ${LAB_GIT_PASSWORD:?Run Initialize-Lab.ps1}
+      SONAR_TOKEN: ${SONAR_TOKEN:?Configure SonarQube token}
+    ports: ["127.0.0.1:8081:8080"]
+    volumes: [jenkins-data:/var/jenkins_home, /var/run/docker.sock:/var/run/docker.sock]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    networks: [lab]
+networks:
+  lab:
+    name: habitapp-lab
+volumes:
+  jenkins-data:
+  gitea-data:
+  registry-data:
+  sonar-data:
+  sonar-extensions:

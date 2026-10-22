@@ -1,0 +1,50 @@
+jenkins:
+  systemMessage: "HabitApp isolated local CI lab"
+  numExecutors: 1
+  labelString: "java21-docker"
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "admin"
+          password: "${LAB_ADMIN_PASSWORD}"
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: gitops-http
+              username: lab
+              password: "${LAB_GIT_PASSWORD}"
+          - string:
+              scope: GLOBAL
+              id: sonar-token
+              secret: "${SONAR_TOKEN}"
+unclassified:
+  location:
+    url: "http://localhost:8081/"
+  sonarGlobalConfiguration:
+    buildWrapperEnabled: false
+    installations:
+      - name: sonarqube
+        serverUrl: http://sonarqube:9000
+        credentialsId: sonar-token
+jobs:
+  - script: >
+      pipelineJob('habitapp') {
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote { url('http://gitea:3000/lab/habitapp.git'); credentials('gitops-http') }
+                branch('*/main')
+              }
+            }
+            scriptPath('Jenkinsfile')
+          }
+        }
+      }

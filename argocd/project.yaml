@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: habitapp
+  namespace: argocd
+spec:
+  sourceRepos:
+    - http://gitea:3000/lab/habitapp-gitops.git
+  destinations:
+    - namespace: habitapp
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - {group: apps, kind: Deployment}
+    - {group: "", kind: Service}
+    - {group: "", kind: ConfigMap}
+    - {group: networking.k8s.io, kind: Ingress}
+    - {group: policy, kind: PodDisruptionBudget}

@@ -1,0 +1,28 @@
+replicaCount: 2
+image:
+  repository: localhost:5000/habitapp
+  tag: "bootstrap"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+service:
+  type: ClusterIP
+  port: 80
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 768Mi
+config:
+  SERVER_PORT: "8080"
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0"
+existingSecret: ""
+ingress:
+  enabled: false
+  className: nginx
+  host: habits.example.com
+  tlsSecret: habitapp-tls
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

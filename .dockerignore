@@ -1,0 +1,15 @@
+.git
+target/*
+!target/habit-tracker.jar
+.idea
+.vscode
+.env
+.env.*
+.local
+evidence
+infra
+charts
+argocd
+*.log
+**/*.key
+**/*.pem

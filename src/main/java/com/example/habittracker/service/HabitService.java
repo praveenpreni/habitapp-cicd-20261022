@@ -7,6 +7,7 @@ import com.example.habittracker.repository.HabitRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.Clock;
 import java.util.List;
 import java.util.TreeSet;
 
@@ -14,13 +15,16 @@ import java.util.TreeSet;
 public class HabitService {
 
     private final HabitRepository repository;
+    private final Clock clock;
 
-    public HabitService(HabitRepository repository) {
+    public HabitService(HabitRepository repository, Clock clock) {
         this.repository = repository;
+        this.clock = clock;
     }
 
     public Habit create(HabitRequest request) {
         Habit habit = new Habit(null, request.getName(), request.getDescription(), request.getFrequency());
+        habit.setCreatedDate(LocalDate.now(clock));
         return repository.save(habit);
     }
 
@@ -60,7 +64,7 @@ public class HabitService {
      */
     public Habit markComplete(Long id, LocalDate date) {
         Habit habit = getById(id);
-        LocalDate day = date != null ? date : LocalDate.now();
+        LocalDate day = date != null ? date : LocalDate.now(clock);
         habit.getCompletedDates().add(day);
         recalculateStreaks(habit);
         return repository.save(habit);
@@ -68,7 +72,7 @@ public class HabitService {
 
     public Habit unmarkComplete(Long id, LocalDate date) {
         Habit habit = getById(id);
-        LocalDate day = date != null ? date : LocalDate.now();
+        LocalDate day = date != null ? date : LocalDate.now(clock);
         habit.getCompletedDates().remove(day);
         recalculateStreaks(habit);
         return repository.save(habit);
@@ -99,7 +103,7 @@ public class HabitService {
         // current streak: consecutive days ending today or yesterday
         int current = 0;
         LocalDate cursor = sorted.last();
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(clock);
         if (cursor.equals(today) || cursor.equals(today.minusDays(1))) {
             current = 1;
             LocalDate walker = cursor;
@@ -115,7 +119,7 @@ public class HabitService {
 
     public HabitStats getStats(Long id) {
         Habit habit = getById(id);
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(clock);
         long completionsLast7 = habit.getCompletedDates().stream()
                 .filter(d -> !d.isBefore(today.minusDays(6)) && !d.isAfter(today))
                 .count();
