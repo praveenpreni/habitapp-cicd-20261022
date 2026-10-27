@@ -44,7 +44,7 @@ pipeline {
     stage('Docker Build and Smoke Test') {
       steps {
         sh '''
-          docker build -f Dockerfile.ci -t "$PUSH_IMAGE:$IMAGE_TAG" .
+          docker build -f Dockerfile -t "$PUSH_IMAGE:$IMAGE_TAG" .
           docker run -d --name "$SMOKE_NAME" --network "$SMOKE_NETWORK" "$PUSH_IMAGE:$IMAGE_TAG"
           trap 'docker rm -f "$SMOKE_NAME" >/dev/null 2>&1 || true' EXIT
           for i in $(seq 1 60); do

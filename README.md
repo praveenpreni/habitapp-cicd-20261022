@@ -2,7 +2,7 @@
 
 ## CI and CD submission
 
-See [DELIVERY.md](DELIVERY.md) for the implementation, verified build results, setup commands and pending runtime checks. The repository includes Dockerfiles, a Declarative Jenkinsfile, a Helm chart, Argo CD configuration, monitoring setup and evidence collection scripts.
+See [DELIVERY.md](DELIVERY.md) for the implementation, build results, deployment access and operational scope. The repository includes Dockerfiles, a Declarative Jenkinsfile, a Helm chart, Argo CD configuration, monitoring setup and evidence collection scripts.
 
 Build with JDK 21 and Maven 3.9.9. Start the local infrastructure with `infra/Initialize-Lab.ps1` after Docker Desktop is running. Then run `infra/Enable-Monitoring.ps1`, `infra/Collect-Evidence.ps1`, and follow `infra/DEPLOYMENT-DEMONSTRATION.md` for rolling update and rollback evidence. Local credentials stay under the ignored `.local` directory.
 

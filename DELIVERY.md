@@ -1,90 +1,38 @@
-# HabitApp CI and CD implementation
+# HabitApp CI/CD delivery
 
-The application now has real tests, dedicated health endpoints, container packaging, a Jenkins pipeline, a reusable Helm chart, and Argo CD configuration. Jenkins publishes the tested JAR in a SHA-tagged image and changes deployment Git. Argo CD alone deploys the application.
+## Repositories
 
-## Verified in this workspace on 22 October 2026
+- Application: https://github.com/praveenpreni/habitapp-cicd-20261022
+- Deployment: https://github.com/praveenpreni/habitapp-gitops-20261022
 
-- Jenkins build 3 passed on Java 21 with 16 tests, zero failures, errors or skips.
-- Executable habit-tracker.jar was packaged successfully.
-- Direct JVM execution returned HTTP 200 for the dashboard, API, liveness and readiness.
-- Helm lint passed and local and ingress-enabled configurations rendered successfully.
-- Jenkins built and smoke-tested the container, pushed a source-SHA image to the authenticated registry, and committed the deployment change to Git.
-- SonarQube passed a gate enforcing at least 80 percent coverage, zero bugs and zero vulnerabilities. Final SonarQube coverage is 91.4 percent.
-- Argo CD synchronized the Helm deployment; two replicas are ready and the container runs as UID 10001.
-- CPU/memory, restart counts, pod status, application logs, Secrets metadata and Argo CD health are captured under evidence.
-- Git-based rollback restored the baseline image; the security-fixed image was then restored as the final state.
+The source repository includes README.md, pom.xml, src/, Dockerfile, Dockerfile.ci, Jenkinsfile, charts/habitapp/, environments/, argocd/ and infra/.
 
-Docker Desktop 4.96.2 and the local Kubernetes lab are running. The application is accessible locally at http://127.0.0.1:28080 and through a temporary public HTTPS demonstration URL recorded in the evidence package. The tunnel URL depends on this laptop and the tunnel process remaining running. GitHub publication is a separate authenticated handover step; consult the final report for its confirmed status.
+## Pipeline
 
-## Local application
+Jenkins checks out a source revision, compiles with Maven, runs 16 tests, packages the JAR, analyzes the source with SonarQube and waits for the Quality Gate. The Docker stage uses the multi-stage Dockerfile, smoke-tests Actuator readiness on container port 8080, and publishes a source-SHA image. Jenkins validates Helm, updates the image tag in deployment Git and pushes the promotion commit. Argo CD owns deployment reconciliation; the delivery pipeline does not run kubectl or helm upgrade.
 
-Use JDK 21 and Maven 3.9.9. In PowerShell 7:
+Dockerfile.ci is retained as an alternative for packaging a prebuilt JAR. Both Dockerfiles run the Java application as UID/GID 10001. The currently prepared pipeline uses Dockerfile; consult the matching Jenkins build console and report for execution results.
 
-```powershell
-./scripts/Verify-Local.ps1 -JavaHome 'PATH_TO_JDK_21' -MavenCommand 'PATH_TO_MAVEN/bin/mvn.cmd'
-./scripts/Run-Local.ps1 -JavaHome 'PATH_TO_JDK_21'
-```
+## Application access
 
-The direct application URL is http://localhost:28081. The application default and container port remain 8080. Ports 8080 and 18080 were already occupied during inspection, so this project uses separate host ports and leaves existing services alone.
+HabitApp listens on container port 8080. The local Kubernetes Service is NodePort 30080, mapped by kind to http://127.0.0.1:28080. A pod port-forward on host 28081 is used for deterministic per-pod functional tests. The chart also supports optional ingress; the demonstrated local environment uses NodePort. Localhost URLs require the lab to be running. A former temporary tunnel is not a permanent hosting endpoint.
 
-## Start the local delivery lab after Docker is repaired
+## Helm and Argo CD
 
-Prerequisites: functioning Docker Desktop Linux engine, PowerShell 7, Git, kubectl, internet access and adequate memory. Plan approximately 10 to 12 GB of available Docker memory for the combined lab; the actual need depends on workload and service versions.
+The reusable chart provides Deployment, Service, ConfigMap, optional Ingress and PodDisruptionBudget templates. values.yaml configures replicas, image, resources, environment, probes, service type, ingress, existingSecret and imagePullSecrets. Sensitive Secret values are provisioned outside Git. registry-pull is the existing Kubernetes image-pull Secret; it is not a chart template containing credentials.
 
-```powershell
-./infra/Initialize-Lab.ps1
-```
+Argo CD renders the Helm chart and reconciles it with namespace habitapp. This does not create Helm CLI release history. AppProject limits source repositories, destination namespace and resource kinds. The application Pod disables service-account token automounting and uses non-root identity, seccomp, a read-only root filesystem and dropped capabilities. The default application service account has no permission to read Secrets.
 
-The script provisions local Git through Gitea, an isolated registry, SonarQube, Jenkins and a kind cluster. It creates separate application and GitOps repositories, configures the SonarQube webhook and Jenkins credentials, bootstraps Argo CD, and triggers the initial build. It uses a project-local kubeconfig and does not change your existing cluster contexts. Existing containers with the same project names must be reviewed before running it.
+## Rollback and verification
 
-Service addresses:
+Revert the image-promotion commit in deployment Git and push the revert. Argo CD reconciles that desired state. Capture the Git revision, image, Synced/Healthy status, ready replicas, rollout result and HTTP health throughout recovery. Restore the intended image with another Git commit. Do not use kubectl rollout undo while GitOps self-healing is active.
 
-| Service | Local URL |
-| --- | --- |
-| Gitea repositories | http://localhost:13000/lab |
-| Jenkins lab | http://localhost:8081 |
-| SonarQube | http://localhost:9000 |
-| Container registry | http://localhost:5000/v2/ |
-| Kubernetes application after successful synchronization | http://localhost:28080 |
+The separate habitapp-runtime-verification Jenkins job executes read-only diagnostics and registry checks. It does not deploy resources or alter Git. Its actual execution console records workloads, image tags, strategy, probes, resources, CPU/memory, startup logs, UID and authorization checks.
 
-Jenkins and SonarQube use admin; Gitea uses lab. Random passwords are generated into .local/state.json, and the Sonar token is stored there too. Never share or commit .local. The local repositories are public only inside the isolated lab network, with host ports bound to loopback. No GitHub repository has been created or changed by these scripts.
+## Runtime and production scope
 
-The local bootstrap is implementation code awaiting execution against a working Docker engine. Review actual startup errors and correct configuration as needed; a static check cannot establish end-to-end success.
+The demonstrated environment is a local single-node kind cluster. The registry is authenticated but uses isolated local HTTP. Jenkins has privileged Docker-socket access and SonarQube uses an evaluation database. Production requires an isolated image builder, supported external SonarQube database, registry TLS, durable infrastructure and controlled access.
 
-## GitHub and production promotion
+Habit data is held in process memory. Replicas do not share records, and restarts clear data. Infrastructure health does not establish persistent data availability. A shared database and backup/recovery design are required for production use.
 
-Publish the source and the separate charts/environments deployment repository to repositories you own. Replace Gitea URLs in the Jenkins job, pipeline parameters and Argo CD project/application. Configure repository access credentials with narrowly scoped permissions, HTTPS, trusted certificates and protected branches. Reconfigure the pipeline environment values file path for each environment when extending beyond the local chart.
-
-Use an authenticated TLS registry and a scoped push credential. The local lab now generates registry credentials for Jenkins and a registry-pull Secret for Kubernetes. It still uses local HTTP and must remain isolated. Production requires TLS, immutable tags or digests, approved base-image digests, vulnerability scanning and artifact signing. Latest lab Jenkins and SonarQube tags need approved version/digest pins for repeatability before a production deployment.
-
-Jenkins in this isolated lab runs with Docker socket access and root inside its container so it can build images. This grants control over the Docker daemon. Run trusted source only; production should use isolated disposable build agents with a dedicated image builder. SonarQube bootstrap checks are disabled for the local lab only; production needs supported host limits and an external supported database.
-
-## Rolling update and rollback
-
-The chart uses two replicas, zero unavailable replicas and one surge replica. Readiness gates traffic, a startup probe protects slow starts, and the process has graceful termination. Monitor timestamped HTTP checks throughout a deployment before claiming availability.
-
-To recover, revert the faulty promotion commit in the deployment repository and push it. Argo CD then restores the previous image from Git. Do not rely on kubectl rollout undo while self-healing is active. Capture the old/new image, Git commit, Argo CD revision, pod readiness and response logs.
-
-## Data limitation
-
-HabitApp still uses process-local in-memory storage. Replicas do not share habits and restarts clear data. Infrastructure availability does not establish data durability or consistent application behavior across replicas. A shared database, migration strategy and backup/restore checks are required before real production use. The original daily-streak algorithm also applies to weekly-frequency habits; business semantics for weekly streaks require separate product decisions.
-
-## Collect evidence
-
-After a successful Jenkins build and healthy Argo CD synchronization:
-
-```powershell
-./infra/Collect-Evidence.ps1
-```
-
-The script saves workload configuration, CPU and memory, restart counts, events, application logs, Argo CD state, Secret metadata without values, registry tags, HTTP responses, Jenkins console output and SonarQube Quality Gate results under a timestamped evidence directory. First run infra/Enable-Monitoring.ps1 to install Metrics Server in the isolated kind cluster. Add screenshots from the live Jenkins and SonarQube interfaces and review the captured states before reporting success. Follow infra/DEPLOYMENT-DEMONSTRATION.md to collect separate baseline, new-version and rollback evidence.
-
-Argo CD renders this Helm chart and owns its Kubernetes resources. There is no Helm CLI release history for that deployment. For a separate Helm CLI demonstration, deploy to a different namespace and remove that test release afterwards.
-
-## References
-
-- Application: https://github.com/Vennilavanguvi/HabitApp
-- Jenkins SonarQube integration: https://www.jenkins.io/doc/pipeline/steps/sonar/
-- kind local registry configuration: https://kind.sigs.k8s.io/docs/user/local-registry/
-- Argo CD automated sync: https://argo-cd.readthedocs.io/en/stable/user-guide/auto_sync/
-- Docker Desktop WSL setup: https://docs.docker.com/desktop/features/wsl/
+Generated credentials, kubeconfig and GitHub authentication stay in .local/ or the user's credential store. Never commit or package credential values.
